@@ -1,0 +1,20 @@
+Windows Registry Editor Version 5.00
+
+; HWP 파일(.hwp)에 대한 우클릭 메뉴 추가
+[HKEY_CLASSES_ROOT\HWP.Document.hwp.96\shell\ConvertToPDF]
+@="PDF로 변환 (&P)"
+"Icon"="imageres.dll,-102"
+
+[HKEY_CLASSES_ROOT\HWP.Document.hwp.96\shell\ConvertToPDF\command]
+@="\"C:\\path\\to\\your\\app.exe\" \" %1\""
+
+
+; HWPX 파일(.hwpx)에 대한 우클릭 메뉴 추가
+[HKEY_CLASSES_ROOT\HWP.Document.hwpx.110\shell\ConvertToPDF]
+@="PDF로 변환 (&P)"
+"Icon"="imageres.dll,-102"
+
+[HKEY_CLASSES_ROOT\HWP.Document.hwpx.110\shell\ConvertToPDF\command]
+@="\"C:\\path\\to\\your\\app.exe\" \" %1\""
+
+

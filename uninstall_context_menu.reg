@@ -1,0 +1,7 @@
+Windows Registry Editor Version 5.00
+
+; HWP 파일(.hwp) 우클릭 메뉴 제거
+[-HKEY_CLASSES_ROOT\HWP.Document.hwp.96\shell\ConvertToPDF]
+
+; HWPX 파일(.hwpx) 우클릭 메뉴 제거
+[-HKEY_CLASSES_ROOT\HWP.Document.hwpx.110\shell\ConvertToPDF]
