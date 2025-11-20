@@ -36,14 +36,27 @@ class App(ctk.CTk):
         self.main_frame.grid_columnconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(2, weight=1) # PanedWindow 영역
 
-        # 1. 상단 팁 레이블
+        # 1. 상단 팁 레이블 (롤링 텍스트)
+        self.tips = [
+            "💡 팁: 헤더를 우클릭하여 열 너비를 자동 조절할 수 있습니다.",
+            "💡 팁: 실행 파일(.exe)에 HWP 파일을 드래그하면 즉시 변환됩니다.",
+            "💡 팁: 결과 목록에서 우클릭하여 파일 이름을 변경하거나 열 수 있습니다.",
+            "💡 팁: 폴더를 추가하면 하위 폴더의 파일까지 모두 검색합니다.",
+            "💡 팁: 목록의 헤더를 클릭하면 파일을 정렬할 수 있습니다.",
+            "💡 팁: 여러 파일을 선택하고 Delete 키를 누르면 목록에서 제거됩니다."
+        ]
+        self.current_tip_index = 0
+        
         self.info_label = ctk.CTkLabel(
             self.main_frame, 
-            text="💡 팁: 헤더를 우클릭하여 너비를 자동 조절할 수 있습니다. 결과창에서 우클릭하여 파일 관리가 가능합니다.",
+            text=self.tips[0],
             font=("", 12),
             text_color="gray"
         )
         self.info_label.grid(row=0, column=0, padx=10, pady=(10, 5), sticky="ew")
+        
+        # 팁 롤링 시작
+        self.rotate_tips()
 
         # 2. 상단 버튼 영역
         self.top_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -88,6 +101,31 @@ class App(ctk.CTk):
 
         # 초기화
         self.after(100, self.process_command_line_args)
+        # 초기 컬럼 너비 설정을 UI 렌더링 직후로 예약
+        self.after(200, self.set_initial_column_widths)
+
+    def set_initial_column_widths(self):
+        """초기 실행 시 컬럼 너비를 창 크기에 맞춰 비율로 설정"""
+        self.update_idletasks()
+        
+        # 입력 트리 너비 설정
+        total_width = self.input_tree.winfo_width()
+        if total_width > 100: # 유효한 너비일 때만
+            # 스크롤바 공간 등을 고려하여 약간 여유를 둠 (-25)
+            w = total_width - 25
+            self.input_tree.column("#0", width=int(w*0.05), stretch=False)
+            self.input_tree.column("name", width=int(w*0.30), stretch=False)
+            self.input_tree.column("size", width=int(w*0.10), stretch=False)
+            self.input_tree.column("mtime", width=int(w*0.15), stretch=False)
+            self.input_tree.column("path", width=int(w*0.40), stretch=False)
+
+        # 결과 트리 너비 설정
+        total_width = self.result_tree.winfo_width()
+        if total_width > 100:
+            w = total_width - 25
+            self.result_tree.column("name", width=int(w*0.35), stretch=False)
+            self.result_tree.column("size", width=int(w*0.10), stretch=False)
+            self.result_tree.column("path", width=int(w*0.55), stretch=False)
 
     def setup_styles(self):
         style = ttk.Style()
@@ -160,24 +198,32 @@ class App(ctk.CTk):
         # 프레임
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.pack(fill="both", expand=True)
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
 
         # 스크롤바 (가로/세로)
         ysb = ctk.CTkScrollbar(frame, orientation="vertical")
-        ysb.pack(side="right", fill="y")
+        # xsb = ctk.CTkScrollbar(frame, orientation="horizontal") # 나중에 추가할 것
         
         xsb = ctk.CTkScrollbar(frame, orientation="horizontal")
-        xsb.pack(side="bottom", fill="x")
-
+        
         # Treeview
-        # #0 컬럼을 체크박스+이미지용으로 사용 (show="tree headings")
         self.columns = ("name", "size", "mtime", "path")
         self.input_tree = ttk.Treeview(frame, columns=self.columns, show="tree headings", selectmode="extended",
-                                       yscrollcommand=ysb.set, xscrollcommand=xsb.set)
+                                       yscrollcommand=lambda *args: self._on_tree_y_scroll(self.input_tree, ysb, *args),
+                                       xscrollcommand=lambda *args: self._on_tree_x_scroll(self.input_tree, xsb, *args))
+        
+        self.input_tree.grid(row=0, column=0, sticky="nsew")
+        ysb.grid(row=0, column=1, sticky="ns")
+        xsb.grid(row=1, column=0, sticky="ew")
         
         ysb.configure(command=self.input_tree.yview)
         xsb.configure(command=self.input_tree.xview)
-        
-        self.input_tree.pack(side="left", fill="both", expand=True)
+
+        # 스크롤바 초기 숨김
+        ysb.grid_remove()
+        xsb.grid_remove()
+
 
         # 헤더 설정
         self.input_tree.heading("#0", text="선택", command=self.toggle_all_checks)
@@ -186,12 +232,12 @@ class App(ctk.CTk):
         self.input_tree.heading("mtime", text="수정일", command=lambda: self.sort_tree(self.input_tree, "mtime", False))
         self.input_tree.heading("path", text="폴더 위치", command=lambda: self.sort_tree(self.input_tree, "path", False))
 
-        # 컬럼 너비
+        # 컬럼 너비 및 설정 (초기값은 임의로 작게, 나중에 비율로 조정됨)
         self.input_tree.column("#0", width=50, anchor="center", stretch=False)
-        self.input_tree.column("name", width=250, anchor="w")
-        self.input_tree.column("size", width=80, anchor="center")
-        self.input_tree.column("mtime", width=130, anchor="center")
-        self.input_tree.column("path", width=300, anchor="w")
+        self.input_tree.column("name", width=100, anchor="w", stretch=False)
+        self.input_tree.column("size", width=50, anchor="center", stretch=False)
+        self.input_tree.column("mtime", width=100, anchor="center", stretch=False)
+        self.input_tree.column("path", width=100, anchor="w", stretch=False)
 
         # 이벤트
         self.input_tree.bind("<Button-1>", self.on_input_click) # 체크박스 토글
@@ -214,30 +260,37 @@ class App(ctk.CTk):
 
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.pack(fill="both", expand=True)
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
 
         ysb = ctk.CTkScrollbar(frame, orientation="vertical")
-        ysb.pack(side="right", fill="y")
-        
         xsb = ctk.CTkScrollbar(frame, orientation="horizontal")
-        xsb.pack(side="bottom", fill="x")
 
         # 결과창은 체크박스 불필요 (show="headings")
         cols = ("name", "size", "path")
         self.result_tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="extended",
-                                        yscrollcommand=ysb.set, xscrollcommand=xsb.set)
+                                        yscrollcommand=lambda *args: self._on_tree_y_scroll(self.result_tree, ysb, *args),
+                                        xscrollcommand=lambda *args: self._on_tree_x_scroll(self.result_tree, xsb, *args))
         
+        self.result_tree.grid(row=0, column=0, sticky="nsew")
+        ysb.grid(row=0, column=1, sticky="ns")
+        xsb.grid(row=1, column=0, sticky="ew")
+
         ysb.configure(command=self.result_tree.yview)
         xsb.configure(command=self.result_tree.xview)
-        
-        self.result_tree.pack(side="left", fill="both", expand=True)
+
+        # 스크롤바 초기 숨김
+        ysb.grid_remove()
+        xsb.grid_remove()
+
 
         self.result_tree.heading("name", text="PDF 파일명", command=lambda: self.sort_tree(self.result_tree, "name", False))
         self.result_tree.heading("size", text="크기", command=lambda: self.sort_tree(self.result_tree, "size", False))
         self.result_tree.heading("path", text="저장 위치", command=lambda: self.sort_tree(self.result_tree, "path", False))
 
-        self.result_tree.column("name", width=250, anchor="w")
-        self.result_tree.column("size", width=80, anchor="center")
-        self.result_tree.column("path", width=400, anchor="w")
+        self.result_tree.column("name", width=100, anchor="w", stretch=False)
+        self.result_tree.column("size", width=50, anchor="center", stretch=False)
+        self.result_tree.column("path", width=100, anchor="w", stretch=False)
 
         # 이벤트
         self.result_tree.bind("<Double-1>", lambda e: self.open_file(self.result_tree)) # 파일 열기
@@ -254,6 +307,22 @@ class App(ctk.CTk):
         self.result_tree.bind("<Button-3>", lambda e: self.on_tree_right_click(e, self.result_tree, self.result_menu))
 
     # --- 이벤트 핸들러 ---
+
+    def _on_tree_y_scroll(self, tree, scrollbar, *args):
+        scrollbar.set(*args)
+        # 스크롤바 가시성 결정
+        if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+            scrollbar.grid_remove() # 전체 내용이 다 보이면 숨김
+        else:
+            scrollbar.grid() # 내용이 넘치면 표시
+
+    def _on_tree_x_scroll(self, tree, scrollbar, *args):
+        scrollbar.set(*args)
+        # 스크롤바 가시성 결정
+        if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+            scrollbar.grid_remove() # 전체 내용이 다 보이면 숨김
+        else:
+            scrollbar.grid() # 내용이 넘치면 표시
 
     def on_tree_right_click(self, event, tree, body_menu):
         """우클릭 이벤트: 헤더인지 바디인지 구분하여 처리"""
@@ -302,15 +371,16 @@ class App(ctk.CTk):
         max_width = 0
         header_text = tree.heading(col)['text']
         # 헤더 텍스트 너비 고려 (헤더는 보통 bold이므로 약간 여유를 둠)
-        max_width = font.measure(header_text) + 25 
+        max_width = font.measure(header_text) + 30
         
         for item in tree.get_children():
             val = tree.set(item, col)
             # 실제 텍스트 너비 측정
-            w = font.measure(str(val)) + 20 
+            w = font.measure(str(val)) + 30
             if w > max_width: max_width = w
         
-        tree.column(col, width=max_width)
+        # stretch=False를 명시하여 다른 컬럼에 영향을 주지 않고 해당 컬럼만 확장되도록 함
+        tree.column(col, width=max_width, stretch=False)
 
     def on_input_click(self, event):
         """입력 트리 클릭 (체크박스 토글 및 파일 열기 분기)"""
@@ -579,6 +649,19 @@ class App(ctk.CTk):
         self.after(0, lambda: self.progress_bar.set(1.0))
         self.after(0, lambda: self.status_label.configure(text=f"✅ 변환 완료: {success}/{total} 성공"))
         self.after(0, lambda: self.update_ui_states(False))
+
+    def rotate_tips(self):
+        """팁 텍스트를 주기적으로 변경"""
+        if not self.is_running: return
+        
+        # 다음 팁으로 인덱스 업데이트
+        self.current_tip_index = (self.current_tip_index + 1) % len(self.tips)
+        
+        # 페이드 효과 흉내 (깜빡임 없이 자연스럽게 텍스트 변경)
+        self.info_label.configure(text=self.tips[self.current_tip_index])
+        
+        # 5초 후 다시 호출
+        self.after(5000, self.rotate_tips)
 
     def destroy(self):
         self.is_running = False
