@@ -287,17 +287,27 @@ class App(ctk.CTk):
                 pass
 
     def autosize_column(self, tree, col):
-        """컬럼 너비 자동 조절"""
+        """컬럼 너비 자동 조절 (폰트 측정 기반)"""
         # 체크박스 컬럼(#0)은 제외
         if col == "#0": return
 
+        # 폰트 가져오기 (Treeview 스타일에서)
+        try:
+            style = ttk.Style()
+            font_name = style.lookup("Treeview", "font")
+            font = tk.font.Font(name=font_name) if font_name else tk.font.Font(family="", size=10) # 기본값
+        except:
+            font = tk.font.Font(family="", size=10)
+
         max_width = 0
         header_text = tree.heading(col)['text']
-        max_width = len(header_text) * 12 + 10 
+        # 헤더 텍스트 너비 고려 (헤더는 보통 bold이므로 약간 여유를 둠)
+        max_width = font.measure(header_text) + 25 
         
         for item in tree.get_children():
             val = tree.set(item, col)
-            w = len(str(val)) * 9 + 20 
+            # 실제 텍스트 너비 측정
+            w = font.measure(str(val)) + 20 
             if w > max_width: max_width = w
         
         tree.column(col, width=max_width)
