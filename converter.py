@@ -5,30 +5,48 @@ import pythoncom
 from pywintypes import com_error
 import threading
 import time
-from pywinauto.application import Application
-from pywinauto.findwindows import ElementNotFoundError
+from pywinauto import Desktop
 
-def auto_click_hwp_security_dialog():
+def monitor_security_dialog():
     """
-    별도의 스레드에서 한컴오피스 보안 경고창을 감시하고 '모두 허용'을 클릭합니다.
+    별도의 스레드에서 한컴오피스 보안 경고창을 감시하고 '모두 허용(A)'을 클릭합니다.
     """
-    try:
-        # "한컴오피스 한글" 이라는 제목의 대화상자가 나타날 때까지 최대 10초 대기
-        app = Application().connect(title="한컴오피스 한글", timeout=10)
-        dialog = app.window(title="한컴오피스 한글")
+    start_time = time.time()
+    while time.time() - start_time < 10:  # 감시 시간을 10초로 연장
+        try:
+            desktop = Desktop(backend="win32")
+            
+            # 모든 활성 창을 순회하며 보안 경고창 찾기
+            target_dialog = None
+            for win in desktop.windows():
+                try:
+                    title = win.window_text()
+                    # 제목에 '한컴오피스'나 '한글'이 있고, 내용 추정을 위해 접근
+                    if "한컴오피스" in title or "한글" in title:
+                        # 창 내부 텍스트나 버튼을 확인하여 보안 경고창인지 확신하면 좋음
+                        # 여기서는 제목 조건이 맞으면 시도
+                        target_dialog = win
+                        break
+                except Exception:
+                    continue
+            
+            if target_dialog:
+                # 창을 찾았으면 활성화하고 키 전송
+                try:
+                    if not target_dialog.is_active():
+                        target_dialog.set_focus()
+                    
+                    # '모두 허용' 단축키 Alt+A 전송
+                    target_dialog.type_keys('%A', with_spaces=True)
+                    print(f"보안 경고창('{target_dialog.window_text()}') 감지 및 '모두 허용(Alt+A)' 전송 완료")
+                    break
+                except Exception as e:
+                    print(f"창 제어 실패 (재시도 중): {e}")
+
+        except Exception:
+            pass
         
-        # 대화상자가 활성화될 때까지 잠시 대기
-        dialog.wait('active', timeout=5)
-        
-        # '모두 허용(A)' 버튼에 해당하는 Alt+A 키 입력 전송
-        dialog.type_keys('%A')
-        print("보안 경고창에서 '모두 허용'을 자동으로 클릭했습니다.")
-        
-    except ElementNotFoundError:
-        # 대화상자가 나타나지 않으면 아무것도 하지 않음
-        print("보안 경고창이 나타나지 않았습니다.")
-    except Exception as e:
-        print(f"보안 경고창 자동 클릭 중 오류 발생: {e}")
+        time.sleep(0.5)
 
 def convert_to_pdf(input_path, output_path=None):
     """
@@ -41,7 +59,7 @@ def convert_to_pdf(input_path, output_path=None):
 
         hwp = win32.gencache.EnsureDispatch("HWPFrame.HWPObject")
         
-        # 보안 모듈 적용
+        # 보안 모듈 적용 (RegisterModule로 해결되면 가장 좋음)
         hwp.RegisterModule("FilePathCheckDLL", "SecurityModule")
         
         # 한/글 창 숨기기
@@ -56,6 +74,10 @@ def convert_to_pdf(input_path, output_path=None):
         if not os.path.exists(input_path):
             print(f"오류: 입력 파일 '{input_path}'을 찾을 수 없습니다.")
             return False
+
+        # 보안 경고창 감시 스레드 시작 (Open 호출 직전)
+        security_thread = threading.Thread(target=monitor_security_dialog, daemon=True)
+        security_thread.start()
 
         # 파일 열기
         hwp.Open(input_path, "HWP", "forceopen:true")
